@@ -69,3 +69,129 @@ cd iPhone-Photo-Transfer
 # 5. Select a destination folder
 # 6. Wait for the transfer to complete
 # 7. Check the summary report
+
+📋 Installation
+
+Prerequisites
+Requirement	Details
+Operating System	Windows 10 or Windows 11
+PowerShell	Version 5.1 or later
+iPhone	Any model (iPhone 6 to iPhone 15)
+Connection	USB cable (Lightning or USB-C)
+Storage	Sufficient free space on destination drive
+One-Click Download
+Option A: Clone with Git
+
+powershell
+git clone https://github.com/votre-nom-utilisateur/iPhone-Photo-Transfer.git
+Option B: Download ZIP
+
+Go to the repository page
+
+Click the green "Code" button
+
+Select "Download ZIP"
+
+Extract the files
+
+🔧 How It Works
+The script uses Windows Shell COM objects to access the iPhone's MTP (Media Transfer Protocol) interface.
+
+Step-by-step flow:
+text
+1. Connect iPhone via USB
+         ↓
+2. Script detects "Apple iPhone" in "This PC"
+         ↓
+3. Navigates to Internal Storage → (DCIM or directly to photo folders)
+         ↓
+4. Recursively scans all subfolders for photos and videos
+         ↓
+5. Shows file count and asks for confirmation
+         ↓
+6. Copies each file to your chosen destination folder
+         ↓
+7. Handles duplicates by auto-renaming (IMG_001_1.jpg)
+         ↓
+8. Reports any errors without stopping the transfer
+         ↓
+9. Displays a summary with successfully copied files and errors
+
+
+
+Technical Details:
+Component	Technology Used
+MTP Access	Shell.Application COM object
+File System	MTP protocol via Windows Explorer
+Error Handling	Try/Catch blocks with error logging
+Progress Display	Write-Progress and custom progress bar
+Duplicate Management	While loop with incremental numbering
+⚙️ Configuration
+Customize the script
+Open src/Copy-iPhonePhotos.ps1 in a text editor and modify these variables:
+
+powershell
+# Change this if your iPhone appears with a different name
+$script:phoneName = 'Apple iPhone'
+
+# Change this to copy only specific file types
+$script:filter = '(.jpg)|(.jpeg)|(.png)|(.heic)|(.gif)|(.bmp)|(.tiff)|(.webp)|(.mov)|(.mp4)|(.avi)|(.3gp)$'
+Example configurations:
+Copy only photos (no videos):
+
+powershell
+$script:filter = '(.jpg)|(.jpeg)|(.png)|(.heic)|(.gif)$'
+Copy only videos:
+
+powershell
+$script:filter = '(.mov)|(.mp4)|(.avi)$'
+❓ Troubleshooting
+Issue	Solution
+iPhone not found	Ensure $script:phoneName matches what you see in Windows Explorer. Reconnect and unlock your iPhone, and trust the computer.
+No photos found	Check if photos are stored locally in Internal Storage (not just in iCloud).
+Error copying a file	The script logs the error and continues. Check the summary for a list of files to manually copy.
+Script doesn't execute	Run PowerShell as Administrator. Check execution policy: Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+Copy is very slow	Large files take time. Ensure you're using a USB 3.0 cable and port.
+❓ FAQ
+Is this safe for my iPhone data?
+Yes. The script uses CopyHere, which is a read-only operation. Your original files on the iPhone are never deleted.
+
+Will this work with iCloud photos?
+This script copies locally stored photos only. If your photos are only in iCloud and not downloaded to your iPhone, they won't appear in Internal Storage.
+
+What happens if a file has the same name?
+The script automatically renames duplicate files by adding _1, _2, etc. (example: IMG_001_1.jpg).
+
+Can I use this with an external hard drive?
+Yes. Simply select the external drive folder when the folder dialog appears.
+
+How long does the transfer take?
+This depends on the number and size of files. A typical backup of 1000 photos (2-3GB) takes about 5-10 minutes.
+
+Does this work with iPad?
+Yes. Just change $script:phoneName = 'Apple iPad' in the script.
+
+📄 License
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+🙏 Acknowledgements
+This script is a distillation of the community's work, built upon ideas and code from projects like:
+
+Project	Author	Contribution
+copy-phone-data	eddiejbrady	Base script structure
+ipad-to-nas	gth	MTP access methods
+iPhone2PC-Backup-Script	localhost-anon	Error handling
+PowerShell MTP	Daiyan Yingyu	MTP technical foundation
+⭐ Support the Project
+If you find this script useful:
+
+⭐ Star the repository on GitHub
+
+🍴 Fork it to customize for your needs
+
+🐛 Report issues to help improve the script
+
+📝 Share with others who need to backup iPhone photos
+
+
+git clone https://github.com/votre-nom-utilisateur/iPhone-Photo-Transfer.git
