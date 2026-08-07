@@ -1,5 +1,6 @@
 # iPhone-Photo-Transfer
-Phone Media Transfer Script This powershell script can be used to copy image and videos from an iPhone to an external hard drive.
+PowerShell script to copy photos and videos from iPhone to Windows PC via USB. Automatic detection, folder selection, duplicate handling, and error reporting.
+
 # 📱 iPhone Photo Transfer Script
 
 [![Licence MIT](https://img.shields.io/badge/Licence-MIT-blue.svg)](LICENSE)
