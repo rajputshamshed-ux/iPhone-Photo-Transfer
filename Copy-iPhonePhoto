@@ -1,0 +1,404 @@
+**Où le mettre :** Dans un dossier `src/` à la racine du dépôt.
+
+**Contenu à copier-coller :**
+
+```powershell
+<#
+.SYNOPSIS
+    Copie toutes les photos et vidéos d'un iPhone vers un disque dur externe.
+.DESCRIPTION
+    Ce script permet de transférer facilement toutes les photos et vidéos d'un iPhone
+    vers un dossier de votre choix sur votre ordinateur.
+    
+    Fonctionnalités :
+    - Détection automatique de l'iPhone
+    - Gestion avec ou sans dossier DCIM
+    - Choix du dossier de destination via une fenêtre Windows classique
+    - Barre de progression détaillée
+    - Gestion des erreurs sans interruption
+    - Résumé des fichiers non transférés en fin de session
+    
+    Basé sur les travaux de la communauté :
+    - eddiejbrady/copy-phone-data
+    - gth/ipad-to-nas
+    - localhost-anon/iPhone2PC-Backup-Script
+    - Blog de Daiyan Yingyu (https://blog.daiyanyingyu.uk/2018/03/20/powershell-mtp/)
+.NOTES
+    Version : 1.0
+    Auteur : Contribution communautaire
+    Licence : MIT
+.LINK
+    https://github.com/votre-nom-utilisateur/iPhone-Photo-Transfer
+.EXAMPLE
+    .\Copy-iPhonePhotos.ps1
+#>
+
+# ==========================================
+# 1. CONFIGURATION
+# ==========================================
+$script:phoneName = 'Apple iPhone'
+$script:filter = '(.jpg)|(.jpeg)|(.png)|(.heic)|(.gif)|(.bmp)|(.tiff)|(.webp)|(.mov)|(.mp4)|(.avi)|(.3gp)$'
+$script:targetRootFolder = $null
+$script:erreurs = @()  # Liste pour stocker les erreurs
+
+# ==========================================
+# 2. FONCTIONS CORE
+# ==========================================
+
+# Objet Shell unique pour toute la session
+function Get-ShellProxy {
+    if (-not $global:ShellProxy) {
+        $global:ShellProxy = New-Object -ComObject Shell.Application
+    }
+    return $global:ShellProxy
+}
+
+# Détection du périphérique MTP
+function Get-PhoneDevice {
+    param([string]$deviceName)
+    
+    $shell = Get-ShellProxy
+    $myComputer = $shell.NameSpace("shell:MyComputerFolder")
+    
+    $device = $myComputer.Items() | Where-Object { $_.Name -eq $deviceName }
+    
+    if (-not $device) {
+        Write-Host "❌ Périphérique '$deviceName' non trouvé." -ForegroundColor Red
+        Write-Host "📌 Périphériques détectés :" -ForegroundColor Yellow
+        $myComputer.Items() | ForEach-Object { Write-Host "   - $($_.Name)" -ForegroundColor Gray }
+        return $null
+    }
+    
+    return $device
+}
+
+# Navigation dans les dossiers du périphérique MTP
+function Get-PhoneFolder {
+    param($parent, [string]$path)
+    
+    if (-not $parent) { return $null }
+    
+    $pathParts = $path -split '\\'
+    $currentItem = $parent
+    
+    foreach ($part in $pathParts) {
+        if (-not $part) { continue }
+        
+        try {
+            $folder = $currentItem.GetFolder
+            if (-not $folder) { return $null }
+            
+            $currentItem = $folder.Items() | Where-Object { $_.IsFolder -and $_.Name -eq $part }
+            if (-not $currentItem) { 
+                return $null 
+            }
+        } catch {
+            return $null
+        }
+    }
+    return $currentItem
+}
+
+# Récupération récursive de tous les fichiers correspondant au filtre
+function Get-FilesRecursive {
+    param($folderItem, $filter)
+    
+    $allFiles = @()
+    
+    try {
+        $folder = $folderItem.GetFolder
+        if (-not $folder) { return $allFiles }
+        
+        foreach ($item in $folder.Items()) {
+            if ($item.IsFolder) {
+                $allFiles += Get-FilesRecursive -folderItem $item -filter $filter
+            } else {
+                if ($item.Name -match $filter) {
+                    $allFiles += $item
+                }
+            }
+        }
+    } catch {
+        # On ignore les erreurs de lecture
+    }
+    
+    return $allFiles
+}
+
+# ==========================================
+# 3. SÉLECTION DU DOSSIER DE DESTINATION
+# ==========================================
+function Select-FolderDialog {
+    <#
+    .SYNOPSIS
+        Ouvre une boîte de dialogue Windows pour sélectionner un dossier.
+    .DESCRIPTION
+        Utilise l'interface FolderBrowserDialog pour permettre à l'utilisateur
+        de choisir un dossier de destination de manière intuitive.
+    #>
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    
+    $folderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
+    $folderBrowser.Description = "Sélectionnez le dossier où copier les photos et vidéos"
+    $folderBrowser.ShowNewFolderButton = $true
+    $folderBrowser.RootFolder = "MyComputer"
+    
+    if ($folderBrowser.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+        return $folderBrowser.SelectedPath
+    } else {
+        return $null
+    }
+}
+
+# ==========================================
+# 4. DÉTECTION INTELLIGENTE DU DOSSIER SOURCE
+# ==========================================
+function Find-SourceFolder {
+    param($phone)
+    
+    Write-Host "🔍 Analyse de la structure de l'iPhone..." -ForegroundColor Yellow
+    
+    # Étape 1 : Vérifier Internal Storage
+    $internalStorage = Get-PhoneFolder -parent $phone -path "Internal Storage"
+    if (-not $internalStorage) {
+        Write-Host "❌ 'Internal Storage' introuvable. Vérifie la connexion." -ForegroundColor Red
+        return $null
+    }
+    Write-Host "   ✅ 'Internal Storage' trouvé" -ForegroundColor Green
+    
+    # Étape 2 : Chercher DCIM
+    $dcim = Get-PhoneFolder -parent $internalStorage -path "DCIM"
+    
+    if ($dcim) {
+        Write-Host "   ✅ Dossier 'DCIM' trouvé !" -ForegroundColor Green
+        return $dcim
+    }
+    
+    # Étape 3 : Recherche directe dans Internal Storage
+    Write-Host "   🔍 Recherche des dossiers de photos dans 'Internal Storage'..." -ForegroundColor Yellow
+    
+    $internalFolder = $internalStorage.GetFolder
+    if ($internalFolder) {
+        $photoFolders = @()
+        foreach ($item in $internalFolder.Items()) {
+            if ($item.IsFolder) {
+                try {
+                    $subFolder = $item.GetFolder
+                    if ($subFolder) {
+                        $hasMedia = $subFolder.Items() | Where-Object { -not $_.IsFolder -and $_.Name -match $script:filter }
+                        if ($hasMedia) {
+                            $photoFolders += $item
+                        }
+                    }
+                } catch {
+                    # Ignorer les dossiers inaccessibles
+                }
+            }
+        }
+        
+        if ($photoFolders.Count -gt 0) {
+            Write-Host "   ✅ $($photoFolders.Count) dossiers de photos trouvés directement !" -ForegroundColor Green
+            return $internalStorage
+        }
+    }
+    
+    Write-Host "   ❌ Aucun dossier de photos trouvé." -ForegroundColor Red
+    return $null
+}
+
+# ==========================================
+# 5. AFFICHAGE DES ERREURS À LA FIN
+# ==========================================
+function Show-ErrorSummary {
+    <#
+    .SYNOPSIS
+        Affiche un résumé des erreurs rencontrées pendant le transfert.
+    #>
+    
+    if ($script:erreurs.Count -eq 0) {
+        Write-Host ""
+        Write-Host "✅ Aucune erreur rencontrée !" -ForegroundColor Green
+        return
+    }
+    
+    Write-Host ""
+    Write-Host "========================================" -ForegroundColor Yellow
+    Write-Host "⚠️  RÉSUMÉ DES ERREURS" -ForegroundColor Yellow
+    Write-Host "========================================" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "$($script:erreurs.Count) fichier(s) non transféré(s) :" -ForegroundColor Yellow
+    
+    foreach ($erreur in $script:erreurs) {
+        Write-Host "   - $erreur" -ForegroundColor Gray
+    }
+    Write-Host ""
+    Write-Host "💡 Vérifie ces fichiers manuellement." -ForegroundColor Yellow
+}
+
+# ==========================================
+# 6. EXÉCUTION PRINCIPALE
+# ==========================================
+
+# Nettoyer la console
+Clear-Host
+
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "   TRANSFERT PHOTOS IPHONE" -ForegroundColor Cyan
+Write-Host "   Version 1.0" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "📋 Ce script va copier toutes vos photos et vidéos" -ForegroundColor White
+Write-Host "   depuis votre iPhone vers un dossier de votre choix." -ForegroundColor White
+Write-Host ""
+
+# Étape 1 : Vérifier la connexion de l'iPhone
+Write-Host "🔍 Recherche de l'iPhone..." -ForegroundColor Yellow
+$phone = Get-PhoneDevice -deviceName $script:phoneName
+
+if (-not $phone) {
+    Write-Host ""
+    Write-Host "❌ iPhone non trouvé !" -ForegroundColor Red
+    Write-Host "📌 Vérifie :" -ForegroundColor Yellow
+    Write-Host "   - Connexion USB" -ForegroundColor Yellow
+    Write-Host "   - iPhone déverrouillé" -ForegroundColor Yellow
+    Write-Host "   - 'Approuver' sur l'iPhone" -ForegroundColor Yellow
+    Write-Host "   - iPhone visible dans l'Explorateur" -ForegroundColor Yellow
+    Write-Host ""
+    Read-Host "Appuie sur Entrée pour quitter"
+    exit
+}
+Write-Host "✅ iPhone trouvé !" -ForegroundColor Green
+Write-Host ""
+
+# Étape 2 : Trouver le dossier source
+$sourceFolder = Find-SourceFolder -phone $phone
+
+if (-not $sourceFolder) {
+    Write-Host ""
+    Write-Host "❌ Aucun dossier source trouvé !" -ForegroundColor Red
+    Read-Host "Appuie sur Entrée pour quitter"
+    exit
+}
+Write-Host ""
+
+# Étape 3 : Sélectionner le dossier de destination (fenêtre Windows classique)
+Write-Host "📁 Sélection du dossier de destination..." -ForegroundColor Yellow
+Write-Host "   Une fenêtre va s'ouvrir, choisis où copier les fichiers." -ForegroundColor Gray
+
+$script:targetRootFolder = Select-FolderDialog
+
+if (-not $script:targetRootFolder) {
+    Write-Host ""
+    Write-Host "❌ Aucun dossier sélectionné. Transfert annulé." -ForegroundColor Red
+    Read-Host "Appuie sur Entrée pour quitter"
+    exit
+}
+
+Write-Host "✅ Dossier sélectionné : $script:targetRootFolder" -ForegroundColor Green
+Write-Host ""
+
+# Étape 4 : Scan des fichiers
+Write-Host "📊 Scan des fichiers en cours..." -ForegroundColor Yellow
+Write-Host "   (cela peut prendre un moment...)" -ForegroundColor Gray
+
+$allFiles = Get-FilesRecursive -folderItem $sourceFolder -filter $script:filter
+$totalFichiers = $allFiles.Count
+
+if ($totalFichiers -eq 0) {
+    Write-Host "❌ Aucun fichier trouvé !" -ForegroundColor Red
+    Read-Host "Appuie sur Entrée pour quitter"
+    exit
+}
+
+Write-Host "📊 $totalFichiers fichiers trouvés (photos + vidéos)" -ForegroundColor Green
+Write-Host ""
+
+# Étape 5 : Confirmation
+Write-Host "⚠️  Attention : La copie va démarrer." -ForegroundColor Yellow
+Write-Host "   Ne débranche pas l'iPhone." -ForegroundColor Yellow
+Write-Host "   Les fichiers originaux restent sur l'iPhone." -ForegroundColor Yellow
+Write-Host ""
+$confirmation = Read-Host "Voulez-vous continuer ? (O/N)"
+
+if ($confirmation -ne "O" -and $confirmation -ne "o") {
+    Write-Host "❌ Transfert annulé." -ForegroundColor Red
+    Read-Host "Appuie sur Entrée pour quitter"
+    exit
+}
+
+# Étape 6 : Copie avec barre de progression
+Write-Host ""
+Write-Host "⏳ Copie en cours... (ne débranche pas l'iPhone)" -ForegroundColor Cyan
+Write-Host ""
+
+$shell = Get-ShellProxy
+$compteur = 0
+$fichiersCopies = 0
+
+foreach ($item in $allFiles) {
+    $compteur++
+    $nomFichier = $item.Name
+    
+    # Gestion des doublons
+    $destPath = Join-Path -Path $script:targetRootFolder -ChildPath $nomFichier
+    $num = 1
+    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($nomFichier)
+    $ext = [System.IO.Path]::GetExtension($nomFichier)
+    
+    while (Test-Path $destPath) {
+        $nouveauNom = "$baseName`_$num$ext"
+        $destPath = Join-Path -Path $script:targetRootFolder -ChildPath $nouveauNom
+        $num++
+    }
+    
+    # Copie sécurisée : pas de popup, capture des erreurs
+    $erreur = $false
+    try {
+        $shell.NameSpace($script:targetRootFolder).CopyHere($item, 0x14)
+        $fichiersCopies++
+    } catch {
+        $erreur = $true
+        $script:erreurs += "$nomFichier - Erreur : $($_.Exception.Message)"
+    }
+    
+    # Petite pause pour éviter les problèmes asynchrones
+    Start-Sleep -Milliseconds 50
+    
+    # Barre de progression
+    $pourcentage = [math]::Round(($compteur / $totalFichiers) * 100, 1)
+    
+    $barreLargeur = 30
+    $barreRemplie = [math]::Round(($pourcentage / 100) * $barreLargeur)
+    $barreVide = $barreLargeur - $barreRemplie
+    $barre = "█" * $barreRemplie + "░" * $barreVide
+    
+    Write-Progress -Activity "📸 Copie des fichiers..." -Status "$pourcentage% ($compteur/$totalFichiers)" -PercentComplete $pourcentage
+    Write-Host "`r⏳ [$barre] $pourcentage% ($compteur/$totalFichiers)" -NoNewline
+}
+
+Write-Host ""
+Write-Host ""
+
+# Étape 7 : Résultat final
+Write-Host "========================================" -ForegroundColor Green
+Write-Host "✅ TRANSFERT TERMINÉ !" -ForegroundColor Green
+Write-Host "========================================" -ForegroundColor Green
+Write-Host ""
+
+Write-Host "📊 RÉSUMÉ :" -ForegroundColor Cyan
+Write-Host "   📁 Fichiers copiés : $fichiersCopies sur $totalFichiers" -ForegroundColor White
+Write-Host "   📂 Destination : $script:targetRootFolder" -ForegroundColor White
+
+# Vérification du nombre de fichiers copiés
+$destFiles = Get-ChildItem -Path $script:targetRootFolder -File | Measure-Object | Select-Object -ExpandProperty Count
+Write-Host "   🔍 Fichiers dans la destination : $destFiles" -ForegroundColor White
+
+# Afficher le résumé des erreurs
+Show-ErrorSummary
+
+Write-Host ""
+Write-Host "💡 Tu peux maintenant débrancher ton iPhone." -ForegroundColor Yellow
+Write-Host ""
+
+Read-Host "Appuie sur Entrée pour fermer"
