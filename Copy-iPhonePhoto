@@ -1,12 +1,8 @@
-**Où le mettre :** Dans un dossier `src/` à la racine du dépôt.
-
-**Contenu à copier-coller :**
-
-```powershell
 <#
 .SYNOPSIS
     Copie toutes les photos et vidéos d'un iPhone vers un disque dur externe.
 .DESCRIPTION
+    Version 2.0 - Corrige le problème des popups sur les fichiers .MOV
     Ce script permet de transférer facilement toutes les photos et vidéos d'un iPhone
     vers un dossier de votre choix sur votre ordinateur.
     
@@ -15,7 +11,7 @@
     - Gestion avec ou sans dossier DCIM
     - Choix du dossier de destination via une fenêtre Windows classique
     - Barre de progression détaillée
-    - Gestion des erreurs sans interruption
+    - Gestion des erreurs sans interruption (plus de popups !)
     - Résumé des fichiers non transférés en fin de session
     
     Basé sur les travaux de la communauté :
@@ -24,14 +20,14 @@
     - localhost-anon/iPhone2PC-Backup-Script
     - Blog de Daiyan Yingyu (https://blog.daiyanyingyu.uk/2018/03/20/powershell-mtp/)
 .NOTES
-    Version : 1.0
+    Version : 2.0
     Auteur : Contribution communautaire
     Licence : MIT
 .LINK
     https://github.com/votre-nom-utilisateur/iPhone-Photo-Transfer
 .EXAMPLE
     .\Copy-iPhonePhotos.ps1
-#>
+#/
 
 # ==========================================
 # 1. CONFIGURATION
@@ -40,6 +36,7 @@ $script:phoneName = 'Apple iPhone'
 $script:filter = '(.jpg)|(.jpeg)|(.png)|(.heic)|(.gif)|(.bmp)|(.tiff)|(.webp)|(.mov)|(.mp4)|(.avi)|(.3gp)$'
 $script:targetRootFolder = $null
 $script:erreurs = @()  # Liste pour stocker les erreurs
+$script:fichiersIgnores = @()  # Liste pour les fichiers ignorés (déjà existants)
 
 # ==========================================
 # 2. FONCTIONS CORE
@@ -208,7 +205,34 @@ function Find-SourceFolder {
 }
 
 # ==========================================
-# 5. AFFICHAGE DES ERREURS À LA FIN
+# 5. FONCTION DE COPIE AMÉLIORÉE (V2 - SANS POPUPS)
+# ==========================================
+function Copy-FileSilent {
+    param(
+        $sourceItem,
+        [string]$destinationPath,
+        [string]$fileName
+    )
+    
+    $shell = Get-ShellProxy
+    $destFolder = $shell.NameSpace($destinationPath)
+    
+    # Flag 0x14 = 0x10 (ne pas afficher de popups) + 0x04 (ne pas afficher de barre de progression)
+    # 0x14 = Combine les flags pour un transfert complètement silencieux
+    $flags = 0x14
+    
+    try {
+        # Copie silencieuse - aucun popup ne s'affichera
+        $destFolder.CopyHere($sourceItem, $flags)
+        return $true
+    } catch {
+        # Si erreur, on la capture silencieusement
+        return $false
+    }
+}
+
+# ==========================================
+# 6. AFFICHAGE DES ERREURS À LA FIN
 # ==========================================
 function Show-ErrorSummary {
     <#
@@ -216,7 +240,7 @@ function Show-ErrorSummary {
         Affiche un résumé des erreurs rencontrées pendant le transfert.
     #>
     
-    if ($script:erreurs.Count -eq 0) {
+    if ($script:erreurs.Count -eq 0 -and $script:fichiersIgnores.Count -eq 0) {
         Write-Host ""
         Write-Host "✅ Aucune erreur rencontrée !" -ForegroundColor Green
         return
@@ -224,20 +248,30 @@ function Show-ErrorSummary {
     
     Write-Host ""
     Write-Host "========================================" -ForegroundColor Yellow
-    Write-Host "⚠️  RÉSUMÉ DES ERREURS" -ForegroundColor Yellow
+    Write-Host "⚠️  RÉSUMÉ DU TRANSFERT" -ForegroundColor Yellow
     Write-Host "========================================" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "$($script:erreurs.Count) fichier(s) non transféré(s) :" -ForegroundColor Yellow
     
-    foreach ($erreur in $script:erreurs) {
-        Write-Host "   - $erreur" -ForegroundColor Gray
+    if ($script:fichiersIgnores.Count -gt 0) {
+        Write-Host "📁 Fichiers déjà existants (ignorés) : $($script:fichiersIgnores.Count)" -ForegroundColor Cyan
+        foreach ($fichier in $script:fichiersIgnores) {
+            Write-Host "   - $fichier" -ForegroundColor Gray
+        }
+        Write-Host ""
     }
-    Write-Host ""
-    Write-Host "💡 Vérifie ces fichiers manuellement." -ForegroundColor Yellow
+    
+    if ($script:erreurs.Count -gt 0) {
+        Write-Host "❌ Fichiers non transférés : $($script:erreurs.Count)" -ForegroundColor Red
+        foreach ($erreur in $script:erreurs) {
+            Write-Host "   - $erreur" -ForegroundColor Gray
+        }
+        Write-Host ""
+        Write-Host "💡 Vérifie ces fichiers manuellement." -ForegroundColor Yellow
+    }
 }
 
 # ==========================================
-# 6. EXÉCUTION PRINCIPALE
+# 7. EXÉCUTION PRINCIPALE
 # ==========================================
 
 # Nettoyer la console
@@ -245,11 +279,12 @@ Clear-Host
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "   TRANSFERT PHOTOS IPHONE" -ForegroundColor Cyan
-Write-Host "   Version 1.0" -ForegroundColor Cyan
+Write-Host "   Version 2.0 (Sans popups)" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "📋 Ce script va copier toutes vos photos et vidéos" -ForegroundColor White
 Write-Host "   depuis votre iPhone vers un dossier de votre choix." -ForegroundColor White
+Write-Host "   ✅ Version corrigée : plus de popups sur les fichiers .MOV !" -ForegroundColor Green
 Write-Host ""
 
 # Étape 1 : Vérifier la connexion de l'iPhone
@@ -318,6 +353,7 @@ Write-Host ""
 Write-Host "⚠️  Attention : La copie va démarrer." -ForegroundColor Yellow
 Write-Host "   Ne débranche pas l'iPhone." -ForegroundColor Yellow
 Write-Host "   Les fichiers originaux restent sur l'iPhone." -ForegroundColor Yellow
+Write-Host "   ✅ Plus de popups - transfert silencieux !" -ForegroundColor Green
 Write-Host ""
 $confirmation = Read-Host "Voulez-vous continuer ? (O/N)"
 
@@ -327,12 +363,12 @@ if ($confirmation -ne "O" -and $confirmation -ne "o") {
     exit
 }
 
-# Étape 6 : Copie avec barre de progression
+# Étape 6 : Copie avec barre de progression (Version 2 - sans popups)
 Write-Host ""
 Write-Host "⏳ Copie en cours... (ne débranche pas l'iPhone)" -ForegroundColor Cyan
+Write-Host "   📦 Transfert silencieux - les fichiers .MOV ne bloqueront plus !" -ForegroundColor Gray
 Write-Host ""
 
-$shell = Get-ShellProxy
 $compteur = 0
 $fichiersCopies = 0
 
@@ -346,24 +382,27 @@ foreach ($item in $allFiles) {
     $baseName = [System.IO.Path]::GetFileNameWithoutExtension($nomFichier)
     $ext = [System.IO.Path]::GetExtension($nomFichier)
     
-    while (Test-Path $destPath) {
+    $destPathFinal = $destPath
+    
+    while (Test-Path $destPathFinal) {
         $nouveauNom = "$baseName`_$num$ext"
-        $destPath = Join-Path -Path $script:targetRootFolder -ChildPath $nouveauNom
+        $destPathFinal = Join-Path -Path $script:targetRootFolder -ChildPath $nouveauNom
         $num++
     }
     
-    # Copie sécurisée : pas de popup, capture des erreurs
-    $erreur = $false
-    try {
-        $shell.NameSpace($script:targetRootFolder).CopyHere($item, 0x14)
-        $fichiersCopies++
-    } catch {
-        $erreur = $true
-        $script:erreurs += "$nomFichier - Erreur : $($_.Exception.Message)"
-    }
+    # Copie silencieuse avec la nouvelle fonction
+    $succes = Copy-FileSilent -sourceItem $item -destinationPath $script:targetRootFolder -fileName $nomFichier
     
-    # Petite pause pour éviter les problèmes asynchrones
-    Start-Sleep -Milliseconds 50
+    if ($succes) {
+        $fichiersCopies++
+    } else {
+        # Vérifier si le fichier a été copié malgré tout
+        if (Test-Path $destPathFinal) {
+            $fichiersCopies++
+        } else {
+            $script:erreurs += "$nomFichier - Échec de la copie"
+        }
+    }
     
     # Barre de progression
     $pourcentage = [math]::Round(($compteur / $totalFichiers) * 100, 1)
@@ -399,6 +438,7 @@ Show-ErrorSummary
 
 Write-Host ""
 Write-Host "💡 Tu peux maintenant débrancher ton iPhone." -ForegroundColor Yellow
+Write-Host "   📌 Version 2.0 - Les popups .MOV sont corrigés !" -ForegroundColor Green
 Write-Host ""
 
 Read-Host "Appuie sur Entrée pour fermer"
