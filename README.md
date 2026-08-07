@@ -323,12 +323,7 @@ If you find this script useful:
 
 ---
 
-## 📞 Contact
 
-- **Issues:** [GitHub Issues](https://github.com/votre-nom-utilisateur/iPhone-Photo-Transfer/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/votre-nom-utilisateur/iPhone-Photo-Transfer/discussions)
-
----
 
 **Made with ❤️ for the open-source community**
 
