@@ -1,33 +1,4 @@
-<#
-.SYNOPSIS
-    Copie toutes les photos et vidéos d'un iPhone vers un disque dur externe.
-.DESCRIPTION
-    Version 2.0 - Corrige le problème des popups sur les fichiers .MOV
-    Ce script permet de transférer facilement toutes les photos et vidéos d'un iPhone
-    vers un dossier de votre choix sur votre ordinateur.
-    
-    Fonctionnalités :
-    - Détection automatique de l'iPhone
-    - Gestion avec ou sans dossier DCIM
-    - Choix du dossier de destination via une fenêtre Windows classique
-    - Barre de progression détaillée
-    - Gestion des erreurs sans interruption (plus de popups !)
-    - Résumé des fichiers non transférés en fin de session
-    
-    Basé sur les travaux de la communauté :
-    - eddiejbrady/copy-phone-data
-    - gth/ipad-to-nas
-    - localhost-anon/iPhone2PC-Backup-Script
-    - Blog de Daiyan Yingyu (https://blog.daiyanyingyu.uk/2018/03/20/powershell-mtp/)
-.NOTES
-    Version : 2.0
-    Auteur : Contribution communautaire
-    Licence : MIT
-.LINK
-    https://github.com/votre-nom-utilisateur/iPhone-Photo-Transfer
-.EXAMPLE
-    .\Copy-iPhonePhotos.ps1
-#/
+# Copy paste in powershell to execute
 
 # ==========================================
 # 1. CONFIGURATION
