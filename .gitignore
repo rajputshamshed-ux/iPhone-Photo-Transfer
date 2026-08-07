@@ -1,0 +1,21 @@
+# PowerShell
+*.ps1xml
+*.psc1
+*.psd1
+*.pssc
+*.cdxml
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# User-specific files
+*.user
+*.suo
