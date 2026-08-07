@@ -1,0 +1,11 @@
+iPhone-Photo-Transfer/
+├── .github/
+│   └── ISSUE_TEMPLATE/
+│       ├── bug_report.md
+│       └── feature_request.md
+├── src/
+│   └── Copy-iPhonePhotos.ps1
+├── .gitignore
+├── CHANGELOG.md
+├── LICENSE
+└── README.md
